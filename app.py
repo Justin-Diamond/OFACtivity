@@ -1,10 +1,12 @@
 import os
 import json
 import requests
-from datetime import datetime
+from datetime import datetime, time
+import pytz
 from requests.auth import AuthBase
 from requests.auth import HTTPBasicAuth
 from apscheduler.schedulers.blocking import BlockingScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 # URL of the consolidated list
 CONSOLIDATED_LIST_URL = "https://data.trade.gov/downloadable_consolidated_screening_list/v1/consolidated.json"
@@ -111,9 +113,21 @@ def check_for_updates():
         print("No changes detected.")
 
 def main():
+    # Run immediately
+    print("Running initial check...")
+    check_for_updates()
+
+    # Schedule daily run at 1 PM Eastern Time
     scheduler = BlockingScheduler()
-    scheduler.add_job(check_for_updates, 'interval', hours=24)
-    print("Starting scheduler...")
+    eastern = pytz.timezone('US/Eastern')
+    scheduler.add_job(
+        check_for_updates,
+        CronTrigger(hour=13, minute=0, timezone=eastern),
+        id='daily_check',
+        name='Daily check at 1 PM Eastern Time'
+    )
+
+    print("Scheduler started. Next run scheduled for 1 PM Eastern Time.")
     scheduler.start()
 
 if __name__ == "__main__":
