@@ -2,10 +2,7 @@ import os
 import json
 import requests
 from datetime import datetime
-import pytz
 from requests_oauthlib import OAuth1Session
-from apscheduler.schedulers.blocking import BlockingScheduler
-from apscheduler.triggers.cron import CronTrigger
 
 # URL of the consolidated list
 CONSOLIDATED_LIST_URL = "https://data.trade.gov/downloadable_consolidated_screening_list/v1/consolidated.json"
@@ -43,26 +40,20 @@ def compare_lists(previous, current):
 
 def send_tweet(message):
     payload = {"text": message}
-
-    # Make the request
     oauth = OAuth1Session(
         CONSUMER_KEY,
         client_secret=CONSUMER_SECRET,
         resource_owner_key=ACCESS_TOKEN,
         resource_owner_secret=ACCESS_TOKEN_SECRET,
     )
-
-    # Making the request
     response = oauth.post(
         "https://api.twitter.com/2/tweets",
         json=payload,
     )
-
     if response.status_code != 201:
         raise Exception(
             f"Request returned an error: {response.status_code} {response.text}"
         )
-
     print(f"Tweet sent successfully: {message}")
     print(f"Response code: {response.status_code}")
     json_response = response.json()
@@ -98,23 +89,5 @@ def check_for_updates():
     else:
         print("No changes detected.")
 
-def main():
-    # Run immediately
-    print("Running initial check...")
-    check_for_updates()
-
-    # Schedule daily run at 1 PM Eastern Time
-    scheduler = BlockingScheduler()
-    eastern = pytz.timezone('US/Eastern')
-    scheduler.add_job(
-        check_for_updates,
-        CronTrigger(hour=13, minute=0, timezone=eastern),
-        id='daily_check',
-        name='Daily check at 1 PM Eastern Time'
-    )
-
-    print("Scheduler started. Next run scheduled for 1 PM Eastern Time.")
-    scheduler.start()
-
 if __name__ == "__main__":
-    main()
+    check_for_updates()
