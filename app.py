@@ -3,7 +3,7 @@ import json
 import requests
 from datetime import datetime
 import pytz
-import tweepy
+from requests_oauthlib import OAuth1Session
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -13,10 +13,10 @@ CONSOLIDATED_LIST_URL = "https://data.trade.gov/downloadable_consolidated_screen
 PREVIOUS_STATE_FILE = "previous_state.json"
 
 # Twitter API credentials
-TWITTER_API_KEY = os.environ.get("TWITTER_API_KEY")
-TWITTER_API_SECRET = os.environ.get("TWITTER_API_SECRET")
-TWITTER_ACCESS_TOKEN = os.environ.get("TWITTER_ACCESS_TOKEN")
-TWITTER_ACCESS_TOKEN_SECRET = os.environ.get("TWITTER_ACCESS_TOKEN_SECRET")
+CONSUMER_KEY = os.environ.get("CONSUMER_KEY")
+CONSUMER_SECRET = os.environ.get("CONSUMER_SECRET")
+ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN")
+ACCESS_TOKEN_SECRET = os.environ.get("ACCESS_TOKEN_SECRET")
 
 def get_current_list():
     response = requests.get(CONSOLIDATED_LIST_URL)
@@ -42,15 +42,31 @@ def compare_lists(previous, current):
     return added, removed
 
 def send_tweet(message):
-    auth = tweepy.OAuthHandler(TWITTER_API_KEY, TWITTER_API_SECRET)
-    auth.set_access_token(TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET)
-    api = tweepy.API(auth)
-    
-    try:
-        api.update_status(message)
-        print(f"Tweet sent successfully: {message}")
-    except tweepy.errors.TweepError as e:
-        print(f"Error sending tweet: {str(e)}")
+    payload = {"text": message}
+
+    # Make the request
+    oauth = OAuth1Session(
+        CONSUMER_KEY,
+        client_secret=CONSUMER_SECRET,
+        resource_owner_key=ACCESS_TOKEN,
+        resource_owner_secret=ACCESS_TOKEN_SECRET,
+    )
+
+    # Making the request
+    response = oauth.post(
+        "https://api.twitter.com/2/tweets",
+        json=payload,
+    )
+
+    if response.status_code != 201:
+        raise Exception(
+            f"Request returned an error: {response.status_code} {response.text}"
+        )
+
+    print(f"Tweet sent successfully: {message}")
+    print(f"Response code: {response.status_code}")
+    json_response = response.json()
+    print(json.dumps(json_response, indent=4, sort_keys=True))
 
 def check_for_updates():
     print(f"Checking for updates at {datetime.now()}")
