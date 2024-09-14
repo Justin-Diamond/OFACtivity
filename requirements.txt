@@ -1,4 +1,2 @@
 requests
 requests_oauthlib
-apscheduler
-pytz
