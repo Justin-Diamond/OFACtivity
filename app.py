@@ -46,8 +46,11 @@ def send_tweet(message):
     auth.set_access_token(TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET)
     api = tweepy.API(auth)
     
-    api.update_status(message)
-    print(f"Tweet sent successfully: {message}")
+    try:
+        api.update_status(message)
+        print(f"Tweet sent successfully: {message}")
+    except tweepy.errors.TweepError as e:
+        print(f"Error sending tweet: {str(e)}")
 
 def check_for_updates():
     print(f"Checking for updates at {datetime.now()}")
