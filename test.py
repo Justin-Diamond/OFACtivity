@@ -34,7 +34,10 @@ def check_credentials():
 
 def get_current_list():
     response = requests.get(CONSOLIDATED_LIST_URL)
-    return response.json()
+    full_data = response.json()
+    # Extract only sources and names
+    simplified_data = [{'source': item['source'], 'name': item['name']} for item in full_data['results']]
+    return simplified_data
 
 def load_previous_state():
     state = redis_client.get('previous_state')
@@ -46,19 +49,19 @@ def save_current_state(current_state):
     redis_client.set('previous_state', json.dumps(current_state))
 
 def compare_lists(previous, current):
-    previous_items = {item['name']: item for item in previous['results']}
-    current_items = {item['name']: item for item in current['results']}
+    previous_items = {item['name']: item['source'] for item in previous}
+    current_items = {item['name']: item['source'] for item in current}
     
     added = defaultdict(list)
     removed = defaultdict(list)
     
-    for name, item in current_items.items():
+    for name, source in current_items.items():
         if name not in previous_items:
-            added[item['source']].append(item['name'])
+            added[source].append(name)
     
-    for name, item in previous_items.items():
+    for name, source in previous_items.items():
         if name not in current_items:
-            removed[item['source']].append(item['name'])
+            removed[source].append(name)
     
     return added, removed
 
@@ -94,7 +97,7 @@ def format_changes(changes, action):
     return messages
 
 def simulate_change(data):
-    data['results'].append({
+    data.append({
         'name': 'Test McTestFace',
         'source': 'Test Source'
     })
@@ -129,6 +132,10 @@ def main():
             send_tweet(full_message)
         else:
             print("No changes detected (this shouldn't happen in this test)")
+
+        # Save the modified list as the new current state
+        save_current_state(modified_list)
+        print("Updated state saved to Redis")
 
     except Exception as e:
         print(f"An error occurred: {str(e)}")
