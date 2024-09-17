@@ -21,7 +21,10 @@ ACCESS_TOKEN_SECRET = os.environ.get("ACCESS_TOKEN_SECRET")
 
 def get_current_list():
     response = requests.get(CONSOLIDATED_LIST_URL)
-    return response.json()
+    full_data = response.json()
+    # Extract only sources and names
+    simplified_data = [{'source': item['source'], 'name': item['name']} for item in full_data['results']]
+    return simplified_data
 
 def load_previous_state():
     state = redis_client.get('previous_state')
@@ -33,19 +36,19 @@ def save_current_state(current_state):
     redis_client.set('previous_state', json.dumps(current_state))
 
 def compare_lists(previous, current):
-    previous_items = {item['name']: item for item in previous['results']}
-    current_items = {item['name']: item for item in current['results']}
+    previous_items = {item['name']: item['source'] for item in previous}
+    current_items = {item['name']: item['source'] for item in current}
     
     added = defaultdict(list)
     removed = defaultdict(list)
     
-    for name, item in current_items.items():
+    for name, source in current_items.items():
         if name not in previous_items:
-            added[item['source']].append(item['name'])
+            added[source].append(name)
     
-    for name, item in previous_items.items():
+    for name, source in previous_items.items():
         if name not in current_items:
-            removed[item['source']].append(item['name'])
+            removed[source].append(name)
     
     return added, removed
 
@@ -97,7 +100,6 @@ def check_for_updates():
         messages = format_changes(added, "added")
         messages.extend(format_changes(removed, "removed"))
         
-        # Join all messages, but ensure we don't exceed Twitter's character limit
         full_message = " | ".join(messages)
         if len(full_message) > 280:
             full_message = full_message[:277] + "..."
