@@ -5,4 +5,5 @@ A tool that tracks the Consolidated Screening List (CSL) and persons/entities su
 The CSL is available here: https://www.trade.gov/consolidated-screening-list
 
 Built by Justin Diamond, @justindiamondhq on Twitter/X.
+
 Buy me a coffee: https://buymeacoffee.com/justindiamond
