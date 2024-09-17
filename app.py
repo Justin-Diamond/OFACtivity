@@ -4,11 +4,14 @@ import requests
 from datetime import datetime
 from requests_oauthlib import OAuth1Session
 from collections import defaultdict
+import redis
 
 # URL of the consolidated list
 CONSOLIDATED_LIST_URL = "https://data.trade.gov/downloadable_consolidated_screening_list/v1/consolidated.json"
-# File to store the previous state
-PREVIOUS_STATE_FILE = "previous_state.json"
+
+# Redis setup
+redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
+redis_client = redis.from_url(redis_url)
 
 # Twitter API credentials
 CONSUMER_KEY = os.environ.get("CONSUMER_KEY")
@@ -21,14 +24,13 @@ def get_current_list():
     return response.json()
 
 def load_previous_state():
-    if os.path.exists(PREVIOUS_STATE_FILE):
-        with open(PREVIOUS_STATE_FILE, 'r') as f:
-            return json.load(f)
+    state = redis_client.get('previous_state')
+    if state:
+        return json.loads(state)
     return None
 
 def save_current_state(current_state):
-    with open(PREVIOUS_STATE_FILE, 'w') as f:
-        json.dump(current_state, f)
+    redis_client.set('previous_state', json.dumps(current_state))
 
 def compare_lists(previous, current):
     previous_items = {item['name']: item for item in previous['results']}
