@@ -87,7 +87,7 @@ def format_changes(changes, action):
         if len(names) == 1:
             messages.append(f"{source} {action}: {names[0]}")
         else:
-            names_str = ", ".join(names[:-1]) + f" and {names[-1]}"
+            names_str = ", and ".join(names)
             messages.append(f"{source} {action}: {names_str}")
     return messages
 
