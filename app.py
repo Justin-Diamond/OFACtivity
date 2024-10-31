@@ -10,15 +10,11 @@ import ssl
 # URL of the consolidated list
 CONSOLIDATED_LIST_URL = "https://data.trade.gov/downloadable_consolidated_screening_list/v1/consolidated.json"
 
-# Redis setup with SSL configuration
+# Redis setup
 redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
-redis_client = redis.from_url(
+redis_client = redis.Redis.from_url(
     redis_url,
-    connection_pool=redis.ConnectionPool(
-        connection_class=redis.SSLConnection,
-        ssl_cert_reqs=None,
-        decode_responses=True
-    )
+    ssl_cert_reqs='none'
 )
 
 # Twitter API credentials
