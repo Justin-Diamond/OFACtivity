@@ -14,10 +14,11 @@ CONSOLIDATED_LIST_URL = "https://data.trade.gov/downloadable_consolidated_screen
 redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
 redis_client = redis.from_url(
     redis_url,
-    ssl=True,
-    ssl_cert_reqs=None,
-    ssl_ca_certs=None,
-    decode_responses=True
+    connection_pool=redis.ConnectionPool(
+        connection_class=redis.SSLConnection,
+        ssl_cert_reqs=None,
+        decode_responses=True
+    )
 )
 
 # Twitter API credentials
