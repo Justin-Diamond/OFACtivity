@@ -5,19 +5,34 @@ from datetime import datetime
 from requests_oauthlib import OAuth1Session
 from collections import defaultdict
 import redis
+import ssl
 
 # URL of the consolidated list
 CONSOLIDATED_LIST_URL = "https://data.trade.gov/downloadable_consolidated_screening_list/v1/consolidated.json"
 
-# Redis setup
+# Redis setup with SSL configuration
 redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
-redis_client = redis.from_url(redis_url)
+redis_client = redis.from_url(
+    redis_url,
+    ssl=True,
+    ssl_cert_reqs=None,
+    ssl_ca_certs=None,
+    decode_responses=True
+)
 
 # Twitter API credentials
 CONSUMER_KEY = os.environ.get("CONSUMER_KEY")
 CONSUMER_SECRET = os.environ.get("CONSUMER_SECRET")
 ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN")
 ACCESS_TOKEN_SECRET = os.environ.get("ACCESS_TOKEN_SECRET")
+
+# Test Redis connection
+def test_redis_connection():
+    try:
+        redis_client.ping()
+        print("Successfully connected to Redis!")
+    except Exception as e:
+        print(f"Redis connection error: {e}")
 
 def get_current_list():
     response = requests.get(CONSOLIDATED_LIST_URL)
