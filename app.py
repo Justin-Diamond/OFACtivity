@@ -5,7 +5,6 @@ from datetime import datetime
 from requests_oauthlib import OAuth1Session
 from collections import defaultdict
 import redis
-from atproto import Client
 from openai import OpenAI
 import ssl
 
@@ -23,7 +22,8 @@ ssl_context.verify_mode = ssl.CERT_NONE
 redis_client = redis.from_url(
     redis_url,
     ssl_cert_reqs=None,
-    ssl_context=ssl_context
+    ssl_ca_certs=None,
+    ssl_check_hostname=False
 )
 
 # Twitter API credentials
@@ -31,10 +31,6 @@ CONSUMER_KEY = os.environ.get("CONSUMER_KEY")
 CONSUMER_SECRET = os.environ.get("CONSUMER_SECRET")
 ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN")
 ACCESS_TOKEN_SECRET = os.environ.get("ACCESS_TOKEN_SECRET")
-
-# Bluesky API credentials
-BLUESKY_USERNAME = os.environ.get("BLUESKY_USERNAME")
-BLUESKY_PASSWORD = os.environ.get("BLUESKY_PASSWORD")
 
 # Kimi API credentials (US/international endpoint)
 KIMI_API_KEY = os.environ.get("KIMI_API_KEY")
@@ -105,33 +101,6 @@ def send_tweet(message, in_reply_to_id=None):
     print(f"Tweet sent successfully: {message}")
     json_response = response.json()
     return json_response['data']['id']
-
-def post_to_bluesky_thread(messages):
-    """
-    Posts a series of messages as a thread on Bluesky.
-    
-    :param messages: List of strings to be posted as a thread.
-    """
-    try:
-        client = Client()
-        client.login(BLUESKY_USERNAME, BLUESKY_PASSWORD)
-        
-        previous_post_uri = None
-        for message in messages:
-            response = client.com.atproto.repo.create_record(
-                repo=BLUESKY_USERNAME,
-                collection="app.bsky.feed.post",
-                record={
-                    "text": message,
-                    "createdAt": datetime.now().isoformat(),
-                    "reply": {"root": previous_post_uri, "parent": previous_post_uri} if previous_post_uri else None,
-                },
-            )
-            previous_post_uri = response.get("uri")
-        
-        print("Thread posted successfully on Bluesky!")
-    except Exception as e:
-        print(f"Error posting to Bluesky: {e}")
 
 def get_sanctions_context_with_kimi(name, source):
     """
@@ -269,9 +238,6 @@ def check_for_updates():
                             print(f"Error sending follow-up tweet for {name}: {e}")
                     else:
                         print(f"No follow-up tweet sent for {name} (deemed unimportant or error)")
-            
-            # Post to Bluesky
-            post_to_bluesky_thread(message_chunks)
             
         except Exception as e:
             print(f"Error posting messages: {str(e)}")
