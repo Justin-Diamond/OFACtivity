@@ -54,7 +54,6 @@ def check_credentials():
 def get_current_list():
     response = requests.get(CONSOLIDATED_LIST_URL)
     full_data = response.json()
-    # Extract only sources and names
     simplified_data = [{'source': item['source'], 'name': item['name']} for item in full_data['results']]
     return simplified_data
 
@@ -84,36 +83,23 @@ def compare_lists(previous, current):
     
     return added, removed
 
-def send_tweet(message, in_reply_to_id=None):
-    payload = {"text": message}
+def simulate_send_tweet(message, in_reply_to_id=None, tweet_type="MAIN"):
+    """Simulates sending a tweet by printing it instead of actually posting."""
+    prefix = "REPLY" if in_reply_to_id else "MAIN"
+    print(f"\n{'='*60}")
+    print(f"[SIMULATED TWEET - {tweet_type}]")
+    print(f"{'='*60}")
     if in_reply_to_id:
-        payload["reply"] = {"in_reply_to_tweet_id": in_reply_to_id}
-    
-    oauth = OAuth1Session(
-        CONSUMER_KEY,
-        client_secret=CONSUMER_SECRET,
-        resource_owner_key=ACCESS_TOKEN,
-        resource_owner_secret=ACCESS_TOKEN_SECRET,
-    )
-    response = oauth.post(
-        "https://api.twitter.com/2/tweets",
-        json=payload,
-    )
-    if response.status_code != 201:
-        raise Exception(
-            f"Request returned an error: {response.status_code} {response.text}"
-        )
-    print(f"Tweet sent successfully: {message}")
-    print(f"Response code: {response.status_code}")
-    json_response = response.json()
-    print(json.dumps(json_response, indent=4, sort_keys=True))
-    return json_response['data']['id']
+        print(f"In reply to: {in_reply_to_id}")
+    print(f"Content ({len(message)} chars):")
+    print(f"\"{message}\"")
+    print(f"{'='*60}\n")
+    # Return a fake tweet ID for simulation purposes
+    return f"simulated_tweet_id_{hash(message) % 1000000}"
 
 def get_sanctions_context_with_kimi(name, source):
     """
     Uses Kimi API with web search to get structured context about a sanctioned party.
-    Kimi researches the entity using authoritative sources and provides structured context.
-    Returns None only if Kimi cannot find any verified information.
     """
     try:
         client = OpenAI(
@@ -128,19 +114,17 @@ def get_sanctions_context_with_kimi(name, source):
 
 CRITICAL RULES:
 1. Output ONLY the final answer. Never output search queries, thinking process, or phrases like "I'll search" or "Let me find"
-2. If you cannot find verified information, output exactly: NO_INFO
-3. Start with the entity name, then structure like this example:
+2. Start with the entity name, then structure like this example:
 "Arctic LNG 2: Russian LNG project operator. Based in St. Petersburg. Sanctioned under Russia-related authorities. Involved in Arctic LNG 2 project circumventing sanctions. Designated November 2024."
-4. Include: Entity name, type, location, sanctions program, reason for sanctions, designation date
-5. Maximum 240 characters. No markdown, no bullet points, no thinking aloud."""
+3. Include: Entity name, type, location, sanctions program, reason for sanctions, designation date
+4. Maximum 240 characters. No markdown, no bullet points, no thinking aloud."""
             },
             {
                 "role": "user",
-                "content": f"Provide factual context for '{name}' on the {source} sanctions list. Search official sources and output only the structured summary starting with the entity name, or NO_INFO."
+                "content": f"Provide factual context for '{name}' on the {source} sanctions list. Search official sources and output only the structured summary starting with the entity name."
             }
         ]
         
-        # Make the API call with web search tool
         response = client.chat.completions.create(
             model="kimi-k2.5",
             messages=messages,
@@ -155,19 +139,13 @@ CRITICAL RULES:
         
         content = response.choices[0].message.content.strip()
         
-        # Remove any thinking/search artifacts that might have slipped through
+        # Remove artifacts
         content = content.replace("I'll search", "").replace("Let me search", "")
         content = content.replace("**Search queries:**", "").replace("Search queries:", "")
         content = content.replace("I'll look up", "").replace("Let me find", "")
         
-        # Check if Kimi found no information
-        if "NO_INFO" in content:
-            print(f"Kimi could not find verified information for '{name}', skipping follow-up")
-            return None
-        
-        # Clean up any remaining artifacts
+        # Clean up lines
         lines = content.split('\n')
-        # Filter out lines that look like search queries or thinking
         clean_lines = []
         for line in lines:
             line = line.strip()
@@ -182,7 +160,6 @@ CRITICAL RULES:
         
         content = content.strip()
         
-        # Ensure it's under 280 chars for Twitter (no "Context: " prefix now)
         if len(content) > 280:
             content = content[:277] + "..."
             
@@ -204,7 +181,6 @@ def format_changes(changes, action):
     return messages
 
 def simulate_change(data):
-    # Add real recently sanctioned entities for testing
     data.append({
         'name': 'SCF Primorye',
         'source': 'OFAC'
@@ -216,20 +192,22 @@ def simulate_change(data):
     return data
 
 def main():
-    print("Checking API credentials:")
+    print("="*60)
+    print("OFAC TRACKER TEST MODE - SIMULATED OUTPUT")
+    print("No actual tweets will be sent")
+    print("="*60)
+    
+    print("\nChecking API credentials:")
     check_credentials()
     
     try:
-        # First run: save current state
         current_list = get_current_list()
         save_current_state(current_list)
-        print("Initial state saved to Redis")
+        print("\nInitial state saved to Redis")
 
-        # Simulate changes with real sanctioned entities
         modified_list = simulate_change(current_list)
         print("Simulated changes: Added 'SCF Primorye' (OFAC) and 'Arctic LNG 2' (OFAC)")
 
-        # Compare and tweet
         previous_list = load_previous_state()
         added, removed = compare_lists(previous_list, modified_list)
 
@@ -241,30 +219,28 @@ def main():
             if len(full_message) > 280:
                 full_message = full_message[:277] + "..."
             
-            # Send main tweet and get ID for follow-ups
-            main_tweet_id = send_tweet(full_message)
+            # Simulate main tweet
+            main_tweet_id = simulate_send_tweet(full_message, tweet_type="MAIN")
             
-            # Generate and send follow-up tweets for ALL ADDED entities
+            # Generate and simulate follow-up tweets for ALL ADDED entities
             for source, names in added.items():
                 for name in names:
                     print(f"\nResearching {name} with Kimi...")
                     context = get_sanctions_context_with_kimi(name, source)
                     
                     if context:
-                        # Send follow-up tweet as reply to the main tweet (no "Context:" prefix)
-                        try:
-                            send_tweet(context, in_reply_to_id=main_tweet_id)
-                            print(f"Sent follow-up tweet for {name}")
-                        except Exception as e:
-                            print(f"Error sending follow-up tweet for {name}: {e}")
+                        # Simulate follow-up tweet
+                        simulate_send_tweet(context, in_reply_to_id=main_tweet_id, tweet_type="FOLLOW-UP")
                     else:
-                        print(f"No follow-up tweet sent for {name} (no verified information found)")
+                        print(f"No context generated for {name}")
         else:
-            print("No changes detected (this shouldn't happen in this test)")
+            print("No changes detected")
 
-        # Save the modified list as the new current state
         save_current_state(modified_list)
         print("\nUpdated state saved to Redis")
+        print("\n" + "="*60)
+        print("TEST COMPLETE")
+        print("="*60)
 
     except Exception as e:
         print(f"An error occurred: {str(e)}")
