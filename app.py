@@ -122,14 +122,14 @@ def get_sanctions_context_with_kimi(name, source):
 CRITICAL RULES:
 1. Output ONLY the final answer. Never output search queries, thinking process, or phrases like "I'll search" or "Let me find"
 2. If you cannot find verified information, output exactly: NO_INFO
-3. Structure your output exactly like this example:
-"Russian LNG project operator. Based in St. Petersburg. Sanctioned under Russia-related authorities. Involved in Arctic LNG 2 project circumventing sanctions. Designated November 2024."
-4. Include: Entity type, location, sanctions program, reason for sanctions, designation date
+3. Start with the entity name, then structure like this example:
+"Arctic LNG 2: Russian LNG project operator. Based in St. Petersburg. Sanctioned under Russia-related authorities. Involved in Arctic LNG 2 project circumventing sanctions. Designated November 2024."
+4. Include: Entity name, type, location, sanctions program, reason for sanctions, designation date
 5. Maximum 240 characters. No markdown, no bullet points, no thinking aloud."""
             },
             {
                 "role": "user",
-                "content": f"Provide factual context for '{name}' on the {source} sanctions list. Search official sources and output only the structured summary or NO_INFO."
+                "content": f"Provide factual context for '{name}' on the {source} sanctions list. Search official sources and output only the structured summary starting with the entity name, or NO_INFO."
             }
         ]
         
@@ -175,9 +175,9 @@ CRITICAL RULES:
         
         content = content.strip()
         
-        # Ensure it's under 240 chars for Twitter
-        if len(content) > 240:
-            content = content[:237] + "..."
+        # Ensure it's under 280 chars for Twitter (no "Context: " prefix now)
+        if len(content) > 280:
+            content = content[:277] + "..."
             
         print(f"Generated context for '{name}': {content}")
         return content
@@ -257,10 +257,9 @@ def check_for_updates():
                     context = get_sanctions_context_with_kimi(name, source)
                     
                     if context:
-                        # Send follow-up tweet as reply to the main tweet
-                        followup_text = f"Context: {context}"
+                        # Send follow-up tweet as reply to the main tweet (no "Context:" prefix)
                         try:
-                            followup_id = send_tweet(followup_text, in_reply_to_id=main_tweet_ids.get(name, previous_tweet_id))
+                            followup_id = send_tweet(context, in_reply_to_id=main_tweet_ids.get(name, previous_tweet_id))
                             print(f"Sent follow-up tweet for {name}")
                         except Exception as e:
                             print(f"Error sending follow-up tweet for {name}: {e}")
