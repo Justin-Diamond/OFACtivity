@@ -124,19 +124,19 @@ def get_sanctions_context_with_kimi(name, source):
         messages = [
             {
                 "role": "system",
-                "content": """You are a sanctions research specialist. Your task is to investigate sanctioned entities using authoritative sources (OFAC, BIS, State Department, Treasury press releases, official government sources). You must:
-1. Use web search to find official information
-2. Verify facts from multiple sources if possible
-3. Never hallucinate or infer information not found in sources
-4. If you cannot find verified information, respond with exactly 'NO_INFO'
-5. Structure your response in this exact format:
-   [Entity Type]: [Brief description]. [Location if known]. [Sanctions program/authority]. [Reason for sanctions]. [Recent context if applicable].
-   Example: "Russian oil tanker/ vessel operator. Based in Dubai. Sanctioned under Russia-related authorities. Part of Russia's shadow fleet evading oil price caps. Designated January 2025."
-6. Keep under 240 characters. Be factual and concise."""
+                "content": """You are a sanctions research specialist. Use web search to find official information from OFAC, Treasury.gov, BIS, and government sources.
+
+CRITICAL RULES:
+1. Output ONLY the final answer. Never output search queries, thinking process, or phrases like "I'll search" or "Let me find"
+2. If you cannot find verified information, output exactly: NO_INFO
+3. Structure your output exactly like this example:
+"Russian LNG project operator. Based in St. Petersburg. Sanctioned under Russia-related authorities. Involved in Arctic LNG 2 project circumventing sanctions. Designated November 2024."
+4. Include: Entity type, location, sanctions program, reason for sanctions, designation date
+5. Maximum 240 characters. No markdown, no bullet points, no thinking aloud."""
             },
             {
                 "role": "user",
-                "content": f"Research '{name}' on the {source} sanctions list. Search OFAC, Treasury.gov, BIS, and official government sources. Provide structured context following the format above. If no verified info found, respond 'NO_INFO'."
+                "content": f"Provide factual context for '{name}' on the {source} sanctions list. Search official sources and output only the structured summary or NO_INFO."
             }
         ]
         
@@ -144,7 +144,7 @@ def get_sanctions_context_with_kimi(name, source):
         response = client.chat.completions.create(
             model="kimi-k2.5",
             messages=messages,
-            temperature=1,  # Must be 1 when using tools
+            temperature=1,
             tools=[
                 {
                     "type": "builtin_function",
@@ -155,13 +155,32 @@ def get_sanctions_context_with_kimi(name, source):
         
         content = response.choices[0].message.content.strip()
         
+        # Remove any thinking/search artifacts that might have slipped through
+        content = content.replace("I'll search", "").replace("Let me search", "")
+        content = content.replace("**Search queries:**", "").replace("Search queries:", "")
+        content = content.replace("I'll look up", "").replace("Let me find", "")
+        
         # Check if Kimi found no information
-        if content == "NO_INFO" or "NO_INFO" in content:
+        if "NO_INFO" in content:
             print(f"Kimi could not find verified information for '{name}', skipping follow-up")
             return None
         
-        # Clean up the response
-        content = content.replace("NO_INFO", "").strip()
+        # Clean up any remaining artifacts
+        lines = content.split('\n')
+        # Filter out lines that look like search queries or thinking
+        clean_lines = []
+        for line in lines:
+            line = line.strip()
+            if line and not line.startswith('"') and not line.startswith('1.') and not line.startswith('2.') and not line.startswith('3.'):
+                if 'site:' not in line and 'http' not in line:
+                    clean_lines.append(line)
+        
+        if clean_lines:
+            content = ' '.join(clean_lines)
+        else:
+            content = content.replace('\n', ' ')
+        
+        content = content.strip()
         
         # Ensure it's under 240 chars for Twitter
         if len(content) > 240:
@@ -186,12 +205,10 @@ def format_changes(changes, action):
 
 def simulate_change(data):
     # Add real recently sanctioned entities for testing
-    # These are actual entities sanctioned by OFAC in recent months
     data.append({
         'name': 'SCF Primorye',
         'source': 'OFAC'
     })
-    # Add another real entity
     data.append({
         'name': 'Arctic LNG 2',
         'source': 'OFAC'
