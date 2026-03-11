@@ -104,8 +104,9 @@ def send_tweet(message, in_reply_to_id=None):
 
 def get_sanctions_context_with_kimi(name, source):
     """
-    Uses Kimi API with web search to get context about a sanctioned party.
-    Returns None if the party is deemed unimportant/small.
+    Uses Kimi API with web search to get structured context about a sanctioned party.
+    Kimi researches the entity using authoritative sources and provides structured context.
+    Returns None only if Kimi cannot find any verified information.
     """
     try:
         client = OpenAI(
@@ -116,11 +117,19 @@ def get_sanctions_context_with_kimi(name, source):
         messages = [
             {
                 "role": "system",
-                "content": "You are a research assistant specializing in sanctions and international trade compliance. Your task is to search for information about sanctioned entities and provide concise, factual context. Be objective and factual."
+                "content": """You are a sanctions research specialist. Your task is to investigate sanctioned entities using authoritative sources (OFAC, BIS, State Department, Treasury press releases, official government sources). You must:
+1. Use web search to find official information
+2. Verify facts from multiple sources if possible
+3. Never hallucinate or infer information not found in sources
+4. If you cannot find verified information, respond with exactly 'NO_INFO'
+5. Structure your response in this exact format:
+   [Entity Type]: [Brief description]. [Location if known]. [Sanctions program/authority]. [Reason for sanctions]. [Recent context if applicable].
+   Example: "Russian oil tanker/ vessel operator. Based in Dubai. Sanctioned under Russia-related authorities. Part of Russia's shadow fleet evading oil price caps. Designated January 2025."
+6. Keep under 240 characters. Be factual and concise."""
             },
             {
                 "role": "user",
-                "content": f"Search for recent information about '{name}' which appears on the {source} sanctions list. First, assess if this is a relatively small/unimportant entity (e.g., a small individual, minor company, obscure vessel) or a significant entity (major corporation, prominent individual, state actor, significant organization). If it's relatively small/unimportant, respond with exactly: 'UNIMPORTANT'. If it's significant, provide a concise 1-2 sentence summary of: 1) Who/what they are, 2) Why they were sanctioned, 3) Any recent relevant context. Keep it under 240 characters."
+                "content": f"Research '{name}' on the {source} sanctions list. Search OFAC, Treasury.gov, BIS, and official government sources. Provide structured context following the format above. If no verified info found, respond 'NO_INFO'."
             }
         ]
         
@@ -139,13 +148,13 @@ def get_sanctions_context_with_kimi(name, source):
         
         content = response.choices[0].message.content.strip()
         
-        # Check if Kimi deemed it unimportant
-        if content == "UNIMPORTANT" or "UNIMPORTANT" in content:
-            print(f"Kimi deemed '{name}' as relatively unimportant, skipping follow-up")
+        # Check if Kimi found no information
+        if content == "NO_INFO" or "NO_INFO" in content:
+            print(f"Kimi could not find verified information for '{name}', skipping follow-up")
             return None
         
         # Clean up the response
-        content = content.replace("UNIMPORTANT", "").strip()
+        content = content.replace("NO_INFO", "").strip()
         
         # Ensure it's under 240 chars for Twitter
         if len(content) > 240:
@@ -222,7 +231,7 @@ def check_for_updates():
                     tweet_id = send_tweet(chunk, in_reply_to_id=previous_tweet_id)
                 previous_tweet_id = tweet_id
             
-            # Generate and send follow-up tweets for ADDED entities only
+            # Generate and send follow-up tweets for ALL ADDED entities
             for source, names in added.items():
                 for name in names:
                     # Get context from Kimi
@@ -237,7 +246,7 @@ def check_for_updates():
                         except Exception as e:
                             print(f"Error sending follow-up tweet for {name}: {e}")
                     else:
-                        print(f"No follow-up tweet sent for {name} (deemed unimportant or error)")
+                        print(f"No follow-up tweet sent for {name} (no verified information found)")
             
         except Exception as e:
             print(f"Error posting messages: {str(e)}")
