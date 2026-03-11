@@ -21,7 +21,8 @@ ssl_context.verify_mode = ssl.CERT_NONE
 redis_client = redis.from_url(
     redis_url,
     ssl_cert_reqs=None,
-    ssl_context=ssl_context
+    ssl_ca_certs=None,
+    ssl_check_hostname=False
 )
 
 # Twitter API credentials
