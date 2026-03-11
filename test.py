@@ -5,13 +5,24 @@ from requests_oauthlib import OAuth1Session
 from collections import defaultdict
 import redis
 from openai import OpenAI
+import ssl
 
 # URL of the consolidated list
 CONSOLIDATED_LIST_URL = "https://data.trade.gov/downloadable_consolidated_screening_list/v1/consolidated.json"
 
 # Redis setup
 redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
-redis_client = redis.from_url(redis_url)
+
+# Create SSL context that doesn't verify certificates (for Heroku Redis)
+ssl_context = ssl.create_default_context()
+ssl_context.check_hostname = False
+ssl_context.verify_mode = ssl.CERT_NONE
+
+redis_client = redis.from_url(
+    redis_url,
+    ssl_cert_reqs=None,
+    ssl_context=ssl_context
+)
 
 # Twitter API credentials
 CONSUMER_KEY = os.environ.get("CONSUMER_KEY")
