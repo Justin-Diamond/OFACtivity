@@ -6,6 +6,7 @@ from requests_oauthlib import OAuth1Session
 from collections import defaultdict
 import redis
 from atproto import Client  # Bluesky client library
+from openai import OpenAI
 
 # URL of the consolidated list
 CONSOLIDATED_LIST_URL = "https://data.trade.gov/downloadable_consolidated_screening_list/v1/consolidated.json"
@@ -26,6 +27,10 @@ ACCESS_TOKEN_SECRET = os.environ.get("ACCESS_TOKEN_SECRET")
 # Bluesky API credentials
 BLUESKY_USERNAME = os.environ.get("BLUESKY_USERNAME")
 BLUESKY_PASSWORD = os.environ.get("BLUESKY_PASSWORD")
+
+# Kimi API credentials (US/international endpoint)
+KIMI_API_KEY = os.environ.get("KIMI_API_KEY")
+KIMI_BASE_URL = "https://api.moonshot.ai/v1"
 
 # Test Redis connection
 def test_redis_connection():
@@ -121,6 +126,62 @@ def post_to_bluesky_thread(messages):
     except Exception as e:
         print(f"Error posting to Bluesky: {e}")
 
+def get_sanctions_context_with_kimi(name, source):
+    """
+    Uses Kimi API with web search to get context about a sanctioned party.
+    Returns None if the party is deemed unimportant/small.
+    """
+    try:
+        client = OpenAI(
+            api_key=KIMI_API_KEY,
+            base_url=KIMI_BASE_URL
+        )
+        
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a research assistant specializing in sanctions and international trade compliance. Your task is to search for information about sanctioned entities and provide concise, factual context. Be objective and factual."
+            },
+            {
+                "role": "user",
+                "content": f"Search for recent information about '{name}' which appears on the {source} sanctions list. First, assess if this is a relatively small/unimportant entity (e.g., a small individual, minor company, obscure vessel) or a significant entity (major corporation, prominent individual, state actor, significant organization). If it's relatively small/unimportant, respond with exactly: 'UNIMPORTANT'. If it's significant, provide a concise 1-2 sentence summary of: 1) Who/what they are, 2) Why they were sanctioned, 3) Any recent relevant context. Keep it under 240 characters."
+            }
+        ]
+        
+        # Make the API call with web search tool
+        response = client.chat.completions.create(
+            model="kimi-k2.5",
+            messages=messages,
+            temperature=0.6,
+            tools=[
+                {
+                    "type": "builtin_function",
+                    "function": {"name": "$web_search"}
+                }
+            ]
+        )
+        
+        content = response.choices[0].message.content.strip()
+        
+        # Check if Kimi deemed it unimportant
+        if content == "UNIMPORTANT" or "UNIMPORTANT" in content:
+            print(f"Kimi deemed '{name}' as relatively unimportant, skipping follow-up")
+            return None
+        
+        # Clean up the response
+        content = content.replace("UNIMPORTANT", "").strip()
+        
+        # Ensure it's under 280 chars for Twitter
+        if len(content) > 240:
+            content = content[:237] + "..."
+            
+        print(f"Generated context for '{name}': {content}")
+        return content
+        
+    except Exception as e:
+        print(f"Error getting context from Kimi for '{name}': {e}")
+        return None
+
 def format_changes(changes, action):
     messages = []
     for source, names in changes.items():
@@ -168,18 +229,43 @@ def check_for_updates():
         full_message = " | ".join(messages)
         message_chunks = split_message(full_message)
         
+        # Collect all tweet IDs for follow-ups (keyed by entity name)
+        main_tweet_ids = {}
+        
         try:
-            # Post to Twitter
+            # Post to Twitter - main thread
             previous_tweet_id = None
             for i, chunk in enumerate(message_chunks):
                 if i == 0:
                     tweet_id = send_tweet(chunk)
+                    # Store the first tweet ID for each added entity for follow-ups
+                    for source, names in added.items():
+                        for name in names:
+                            main_tweet_ids[name] = tweet_id
                 else:
                     tweet_id = send_tweet(chunk, in_reply_to_id=previous_tweet_id)
                 previous_tweet_id = tweet_id
             
+            # Generate and send follow-up tweets for ADDED entities only
+            for source, names in added.items():
+                for name in names:
+                    # Get context from Kimi
+                    context = get_sanctions_context_with_kimi(name, source)
+                    
+                    if context:
+                        # Send follow-up tweet as reply to the main tweet
+                        followup_text = f"Context: {context}"
+                        try:
+                            followup_id = send_tweet(followup_text, in_reply_to_id=main_tweet_ids.get(name, previous_tweet_id))
+                            print(f"Sent follow-up tweet for {name}")
+                        except Exception as e:
+                            print(f"Error sending follow-up tweet for {name}: {e}")
+                    else:
+                        print(f"No follow-up tweet sent for {name} (deemed unimportant or error)")
+            
             # Post to Bluesky
             post_to_bluesky_thread(message_chunks)
+            
         except Exception as e:
             print(f"Error posting messages: {str(e)}")
         
