@@ -128,7 +128,7 @@ def get_sanctions_context_with_kimi(name, source):
         response = client.chat.completions.create(
             model="kimi-k2.5",
             messages=messages,
-            temperature=0.6,
+            temperature=1,  # Must be 1 when using tools
             tools=[
                 {
                     "type": "builtin_function",
