@@ -7,6 +7,7 @@ from collections import defaultdict
 import redis
 from openai import OpenAI
 import ssl
+import time
 
 # URL of the consolidated list
 CONSOLIDATED_LIST_URL = "https://data.trade.gov/downloadable_consolidated_screening_list/v1/consolidated.json"
@@ -35,6 +36,10 @@ ACCESS_TOKEN_SECRET = os.environ.get("ACCESS_TOKEN_SECRET")
 # Kimi API credentials (US/international endpoint)
 KIMI_API_KEY = os.environ.get("KIMI_API_KEY")
 KIMI_BASE_URL = "https://api.moonshot.ai/v1"
+
+# Production safeguards
+MAX_FOLLOW_UPS_PER_RUN = 5  # Prevent spam if batch sanctions drop
+RATE_LIMIT_DELAY = 2  # Seconds between tweets to avoid rate limits
 
 def test_redis_connection():
     try:
@@ -226,6 +231,9 @@ def check_for_updates():
     
     added, removed = compare_lists(previous_list, current_list)
     
+    # Count total added entities
+    total_added = sum(len(names) for names in added.values())
+    
     if added or removed:
         messages = format_changes(added, "added")
         messages.extend(format_changes(removed, "removed"))
@@ -250,21 +258,39 @@ def check_for_updates():
                     tweet_id = send_tweet(chunk, in_reply_to_id=previous_tweet_id)
                 previous_tweet_id = tweet_id
             
-            # Generate and send follow-up tweets for ALL ADDED entities
+            # Generate and send follow-up tweets for ADDED entities with safeguards
+            follow_up_count = 0
+            skipped_count = 0
+            
             for source, names in added.items():
                 for name in names:
+                    # Check if we've hit the max follow-ups limit
+                    if follow_up_count >= MAX_FOLLOW_UPS_PER_RUN:
+                        skipped_count += 1
+                        continue
+                    
                     # Get context from Kimi
                     context = get_sanctions_context_with_kimi(name, source)
                     
                     if context:
-                        # Send follow-up tweet as reply to the main tweet (no "Context:" prefix)
+                        # Send follow-up tweet as reply to the main tweet
                         try:
                             followup_id = send_tweet(context, in_reply_to_id=main_tweet_ids.get(name, previous_tweet_id))
                             print(f"Sent follow-up tweet for {name}")
+                            follow_up_count += 1
+                            
+                            # Rate limit protection - sleep between tweets
+                            if follow_up_count < MAX_FOLLOW_UPS_PER_RUN:
+                                time.sleep(RATE_LIMIT_DELAY)
+                                
                         except Exception as e:
                             print(f"Error sending follow-up tweet for {name}: {e}")
                     else:
                         print(f"No follow-up tweet sent for {name} (no verified information found)")
+            
+            # Report if any were skipped due to limit
+            if skipped_count > 0:
+                print(f"Skipped {skipped_count} entities due to MAX_FOLLOW_UPS_PER_RUN limit ({MAX_FOLLOW_UPS_PER_RUN})")
             
         except Exception as e:
             print(f"Error posting messages: {str(e)}")
