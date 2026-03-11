@@ -5,17 +5,25 @@ from datetime import datetime
 from requests_oauthlib import OAuth1Session
 from collections import defaultdict
 import redis
-from atproto import Client  # Bluesky client library
+from atproto import Client
 from openai import OpenAI
+import ssl
 
 # URL of the consolidated list
 CONSOLIDATED_LIST_URL = "https://data.trade.gov/downloadable_consolidated_screening_list/v1/consolidated.json"
 
 # Redis setup
 redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
-redis_client = redis.Redis.from_url(
+
+# Create SSL context that doesn't verify certificates (for Heroku Redis)
+ssl_context = ssl.create_default_context()
+ssl_context.check_hostname = False
+ssl_context.verify_mode = ssl.CERT_NONE
+
+redis_client = redis.from_url(
     redis_url,
-    ssl_cert_reqs='none'
+    ssl_cert_reqs=None,
+    ssl_context=ssl_context
 )
 
 # Twitter API credentials
@@ -32,7 +40,6 @@ BLUESKY_PASSWORD = os.environ.get("BLUESKY_PASSWORD")
 KIMI_API_KEY = os.environ.get("KIMI_API_KEY")
 KIMI_BASE_URL = "https://api.moonshot.ai/v1"
 
-# Test Redis connection
 def test_redis_connection():
     try:
         redis_client.ping()
@@ -171,7 +178,7 @@ def get_sanctions_context_with_kimi(name, source):
         # Clean up the response
         content = content.replace("UNIMPORTANT", "").strip()
         
-        # Ensure it's under 280 chars for Twitter
+        # Ensure it's under 240 chars for Twitter
         if len(content) > 240:
             content = content[:237] + "..."
             
