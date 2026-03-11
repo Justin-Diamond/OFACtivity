@@ -1,5 +1,4 @@
 requests
 requests_oauthlib
 redis
-atproto
 openai>=1.0.0
